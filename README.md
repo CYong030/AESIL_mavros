@@ -52,6 +52,7 @@
 - ROS 2 (Humble/Iron/Rolling)
 - Python 3.8+
 - pymavlink
+- drone_interfaces (自定義訊息套件，包含在此專案中)
 
 ### 編譯步驟
 
@@ -61,13 +62,14 @@ mkdir -p ~/gcs_ws/src
 cd ~/gcs_ws/src
 
 # 2. 複製專案
-git clone <your-repo-url> drone_control
+git clone git@github.com:CYong030/AESIL_mavros.git drone_control
 
 # 3. 安裝相依套件
 cd ~/gcs_ws
 rosdep install --from-paths src --ignore-src -r -y
 
-# 4. 編譯
+# 4. 編譯 (需要先編譯 drone_interfaces)
+colcon build --packages-select drone_interfaces
 colcon build --packages-select drone_control
 
 # 5. 設定環境
@@ -199,9 +201,21 @@ angular:
    - 檢查網路連線
    - 驗證防火牆設定
 
+4. **編譯錯誤**
+   - 確認已先編譯 drone_interfaces
+   - 檢查 ROS 2 環境是否正確設定
+   - 驗證相依套件是否安裝完成
+
 ### 除錯指令
 
 ```bash
+# 檢查套件編譯狀態
+colcon list --packages-up-to drone_control
+
+# 重新編譯特定套件
+colcon build --packages-select drone_interfaces --cmake-clean-cache
+colcon build --packages-select drone_control --cmake-clean-cache
+
 # 檢查節點狀態
 ros2 node list
 
@@ -213,21 +227,32 @@ ros2 topic echo /{vehicle_type}_swarm_1/{vehicle_type}/swarm1/gcs/sub
 
 # 檢查節點日誌
 ros2 launch drone_control drone_control.launch.py --ros-args --log-level DEBUG
+
+# 檢查訊息類型定義
+ros2 interface show drone_interfaces/msg/Drone
+ros2 interface show drone_interfaces/msg/Mission
 ```
 
 ## 開發
 
 ### 專案結構
 ```
-drone_control/
-├── drone_control/
-│   ├── __init__.py
-│   └── mavlink_bridge.py          # 主要橋接器程式
-├── launch/
-│   └── drone_control.launch.py    # 啟動檔案
-├── package.xml                    # 套件描述
-├── setup.py                       # Python 套件設定
-└── README.md                      # 說明文件
+AESIL_mavros/
+├── drone_control/                  # MAVLink 橋接器套件
+│   ├── drone_control/
+│   │   ├── __init__.py
+│   │   └── mavlink_bridge.py      # 主要橋接器程式
+│   ├── launch/
+│   │   └── drone_control.launch.py # 啟動檔案
+│   ├── package.xml                # 套件描述
+│   ├── setup.py                   # Python 套件設定
+│   └── README.md                  # 說明文件
+└── drone_interfaces/               # 自定義 ROS 2 訊息套件
+    ├── msg/
+    │   ├── Drone.msg              # 無人載具狀態訊息
+    │   └── Mission.msg            # 任務指令訊息
+    ├── CMakeLists.txt
+    └── package.xml
 ```
 
 ### 貢獻指南

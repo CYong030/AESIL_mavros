@@ -76,9 +76,9 @@ class MavBridge(Node):
             depth=1)
 
         # ────── ROS Pub / Sub ──────
-        ns = f'/{self.vehicle_type}/swarm{self.swarmid}/gcs'
-        self.pub_status = self.create_publisher(Drone, f'{ns}/sub', qos_best_effort)
-        self.sub_mission = self.create_subscription(Mission, f'{ns}/pub',self._mission_cb, qos_reliable)
+        ns = f'/{self.vehicle_type}/swarm{self.swarmid}/{self.vehicle_name}'
+        self.pub_status = self.create_publisher(Drone, f'{ns}/status', qos_best_effort)
+        self.sub_mission = self.create_subscription(Mission, f'{ns}/mission',self._mission_cb, qos_reliable)
         
         # 新增 Twist 訊息訂閱器用於速度控制
         self.sub_velocity = self.create_subscription(Twist, f'{ns}/cmd_vel', self._velocity_cb, qos_reliable)
@@ -146,7 +146,7 @@ class MavBridge(Node):
                 mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
                 0,       # confirmation
                 1,       # param1: 1=arm, 0=disarm
-                21196,   # param2: 強制解鎖魔術數字 (忽略安全檢查)
+                0,   # param2: 強制解鎖魔術數字 (忽略安全檢查)
                 0,0,0,0,0)  # param3-7: 未使用
             self.get_logger().info('Sending ARM command')
             

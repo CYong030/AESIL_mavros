@@ -129,153 +129,300 @@ ros2 launch drone_control drone_control.launch.py \
 | `vehicle_type` | string | `drone` | 載具類型 (drone/ugv/usv) |
 | `swarm_id` | int | `1` | 集群 ID |
 | `vehicle_name` | string | `leader1` | 載具名稱 |
-| `mavlink_uri` | string | `udp:0.0.0.0:14550` | MAVLink 連線 URI |
-| `gcs_uri` | string | `udpout:192.168.2.44:14550` | GCS 連線 URI |
+| `mavlink_uri` | string | `udp:0.0.0.0:14550` | MAVLink 連線 URI (詳見連線方式) |
+| `gcs_uri` | string | `udpout:192.168.2.44:14550` | GCS 連線 URI (詳見連線方式) |
 
-## ROS 2 介面
+## 連線方式詳解
 
-### 發布的主題
-- `/{vehicle_type}_swarm_{swarm_id}/{vehicle_type}/swarm{swarm_id}/gcs/sub` (Drone) - 載具狀態資訊
+### MAVLink URI 連線方式 (`mavlink_uri`)
 
-### 訂閱的主題
-- `/{vehicle_type}_swarm_{swarm_id}/{vehicle_type}/swarm{swarm_id}/gcs/pub` (Mission) - 任務指令
-- `/{vehicle_type}_swarm_{swarm_id}/{vehicle_type}/swarm{swarm_id}/gcs/cmd_vel` (Twist) - 速度控制
+MAVLink 通訊協定支援多種連線方式，用於連接飛控板或模擬器：
 
-### 訊息格式
-
-#### Mission 訊息範例
+#### 1. 串口連線 (Serial)
 ```bash
-# 解鎖指令
-ros2 topic pub /{vehicle_type}_swarm_1/{vehicle_type}/swarm1/gcs/pub drone_interfaces/Mission "
-mission: 'ARM'
-data:
-  latitude: 0.0
-  longitude: 0.0
-  altitude: 0.0"
+# USB 串口 (最常見)
+mavlink_uri:=/dev/ttyACM0            # USB 連接的飛控板
+mavlink_uri:=/dev/ttyACM1            # 第二個 USB 裝置
+mavlink_uri:=/dev/ttyUSB0            # USB 轉串口裝置
 
-# 起飛指令
-ros2 topic pub /{vehicle_type}_swarm_1/{vehicle_type}/swarm1/gcs/pub drone_interfaces/Mission "
-mission: 'TAKEOFF'
-data:
-  latitude: 0.0
-  longitude: 0.0
-  altitude: 5.0"
+# 樹莓派 GPIO 串口
+mavlink_uri:=/dev/ttyAMA0            # 樹莓派硬體串口
+mavlink_uri:=/dev/ttyS0              # 第一個串口
+
 ```
 
-#### Twist 速度控制範例
+#### 2. UDP 連線
 ```bash
-# 前進飛行
-ros2 topic pub /{vehicle_type}_swarm_1/{vehicle_type}/swarm1/gcs/cmd_vel geometry_msgs/Twist "
-linear:
-  x: 2.0  # 前進 2 m/s
-  y: 0.0  # 右移 0 m/s
-  z: 0.0  # 下降 0 m/s
-angular:
-  x: 0.0
-  y: 0.0
-  z: 0.5  # 逆時針旋轉 0.5 rad/s"
+# UDP 伺服器模式 (監聽連入連線)
+mavlink_uri:=udp:0.0.0.0:14550       # 監聽所有介面的 14550 埠
+mavlink_uri:=udp:127.0.0.1:14551     # 僅監聽本機的 14551 埠
+mavlink_uri:=udp:192.168.1.100:14552 # 監聽特定 IP 的指定埠
+
+# UDP 客戶端模式 (主動連線)
+mavlink_uri:=udpout:127.0.0.1:14550  # 連線到本機模擬器
+mavlink_uri:=udpout:192.168.1.10:14550 # 連線到遠端飛控
+mavlink_uri:=udpout:10.0.0.1:14550   # 連線到特定網段裝置
 ```
 
-## 安全限制
+#### 3. TCP 連線
+```bash
+# TCP 伺服器模式
+mavlink_uri:=tcp:0.0.0.0:5760        # 監聽 TCP 5760 埠
+mavlink_uri:=tcp:127.0.0.1:5761      # 監聽本機 5761 埠
 
-- **線性速度限制**：±10 m/s (水平)，±5 m/s (垂直)
-- **角速度限制**：±2 rad/s (偏航)
-- **強制解鎖**：使用魔術數字 21196 進行強制解鎖
+# TCP 客戶端模式
+mavlink_uri:=tcpout:127.0.0.1:5760   # 連線到本機 TCP 服務
+mavlink_uri:=tcpout:192.168.1.10:5760 # 連線到遠端 TCP 服務
+```
 
-## 故障排除
+#### 4. 檔案重播模式
+```bash
+# 重播 MAVLink 日誌檔案 (用於測試)
+mavlink_uri:=file:/path/to/mavlink.log
+mavlink_uri:=file:/home/user/flight_logs/mission_001.tlog
+```
 
-### 常見問題
+### GCS URI 連線方式 (`gcs_uri`)
 
-1. **無法解鎖 (ARM 失敗)**
-   - 檢查 MAVLink 連線是否正常
-   - 確認飛控系統狀態
-   - 檢查安全檢查項目
+GCS (地面控制站) 連線用於將 MAVLink 訊息轉發給 QGroundControl 等地面站軟體：
 
-2. **主題無資料**
-   - 確認節點是否正常啟動
-   - 檢查主題名稱是否正確
-   - 驗證 QoS 設定
+#### 1. UDP 輸出連線
+```bash
+# 單一 GCS 連線
+gcs_uri:=udpout:192.168.1.100:14550  # 傳送到特定 IP 的 GCS
+gcs_uri:=udpout:127.0.0.1:14550      # 傳送到本機 GCS
+gcs_uri:=udpout:10.0.0.5:14551       # 傳送到指定網段的 GCS
 
-3. **GCS 連線失敗**
-   - 確認 GCS URI 設定
-   - 檢查網路連線
-   - 驗證防火牆設定
+# 多重 GCS 連線 (使用逗號分隔)
+gcs_uri:=udpout:192.168.1.100:14550,udpout:192.168.1.101:14550
+gcs_uri:=udpout:127.0.0.1:14550,udpout:192.168.1.10:14551
+```
 
-4. **編譯錯誤**
-   - 確認已先編譯 drone_interfaces
-   - 檢查 ROS 2 環境是否正確設定
-   - 驗證相依套件是否安裝完成
+#### 2. UDP 廣播連線
+```bash
+# 區域網路廣播 (所有 GCS 都能收到)
+gcs_uri:=udpbcast:192.168.1.255:14550  # 廣播到 192.168.1.x 網段
+gcs_uri:=udpbcast:10.0.0.255:14550     # 廣播到 10.0.0.x 網段
+gcs_uri:=udpbcast:255.255.255.255:14550 # 全域廣播 (較少使用)
 
-### 除錯指令
+# 本機廣播
+gcs_uri:=udpbcast:127.255.255.255:14550
+```
+
+#### 3. TCP 連線
+```bash
+# TCP 輸出連線
+gcs_uri:=tcpout:192.168.1.100:5760   # TCP 連線到 GCS
+gcs_uri:=tcpout:127.0.0.1:5760       # TCP 連線到本機 GCS
+
+# TCP 伺服器模式 (等待 GCS 連入)
+gcs_uri:=tcp:0.0.0.0:5760            # 開放 TCP 5760 給 GCS 連入
+gcs_uri:=tcp:127.0.0.1:5761          # 僅允許本機 GCS 連入
+```
+
+#### 4. 無 GCS 連線
+```bash
+# 不轉發給 GCS (僅 ROS 2 通訊)
+gcs_uri:=none
+gcs_uri:=""                          # 空字串也表示無 GCS
+```
+
+### 常用連線組合範例
+
+#### SITL 模擬器連線
+```bash
+# ArduPilot SITL + QGroundControl
+mavlink_uri:=udp:127.0.0.1:14550
+gcs_uri:=udpout:127.0.0.1:14551
+
+# PX4 SITL + QGroundControl  
+mavlink_uri:=udp:127.0.0.1:14540
+gcs_uri:=udpout:127.0.0.1:14550
+```
+
+#### 實體硬體連線
+```bash
+# USB 連接飛控 + 網路 GCS
+mavlink_uri:=/dev/ttyACM0:57600
+gcs_uri:=udpout:192.168.1.100:14550
+
+# 串口飛控 + 廣播 GCS
+mavlink_uri:=/dev/ttyAMA0:115200
+gcs_uri:=udpbcast:192.168.1.255:14550
+```
+
+#### 遠端飛控連線
+```bash
+# WiFi 連接遠端飛控 + 本機 GCS
+mavlink_uri:=udpout:192.168.4.1:14550
+gcs_uri:=udpout:127.0.0.1:14550
+
+# 4G/LTE 連接 + 多重 GCS
+mavlink_uri:=tcpout:drone.example.com:5760
+gcs_uri:=udpout:192.168.1.100:14550,udpout:192.168.1.101:14550
+```
+
+#### 多載具系統連線
+```bash
+# 載具 1
+mavlink_uri:=/dev/ttyACM0:57600
+gcs_uri:=udpbcast:192.168.1.255:14550
+
+# 載具 2  
+mavlink_uri:=/dev/ttyACM1:57600
+gcs_uri:=udpbcast:192.168.1.255:14550
+
+# 載具 3 (網路連接)
+mavlink_uri:=udpout:192.168.1.10:14550
+gcs_uri:=udpbcast:192.168.1.255:14550
+```
+
+## 連線方式詳細說明
+
+### MAVLink URI 連線方式 (mavlink_uri)
+
+#### 1. 串口連線 (Serial Connection)
+```bash
+# USB 串口連線
+mavlink_uri:=/dev/ttyUSB0:57600
+mavlink_uri:=/dev/ttyACM0:115200
+
+# Windows 系統
+mavlink_uri:=COM3:57600
+mavlink_uri:=COM4:115200
+
+# macOS 系統
+mavlink_uri:=/dev/cu.usbserial-XXXXXXXX:57600
+mavlink_uri:=/dev/cu.usbmodem-XXXXXXXX:115200
+```
+
+#### 2. UDP 連線
+```bash
+# UDP 伺服器模式 (監聽指定埠)
+mavlink_uri:=udp:0.0.0.0:14550      # 監聽所有介面的 14550 埠
+mavlink_uri:=udp:192.168.1.100:14550 # 監聽特定 IP 的 14550 埠
+
+# UDP 客戶端模式 (連線到遠端)
+mavlink_uri:=udpout:192.168.1.10:14550  # 連線到遠端 IP
+mavlink_uri:=udpout:127.0.0.1:14550     # 連線到本機
+```
+
+#### 3. TCP 連線
+```bash
+# TCP 伺服器模式
+mavlink_uri:=tcp:0.0.0.0:5760       # TCP 伺服器監聽 5760 埠
+mavlink_uri:=tcp:192.168.1.100:5760 # TCP 伺服器監聽特定 IP
+
+# TCP 客戶端模式
+mavlink_uri:=tcpout:192.168.1.10:5760   # 連線到 TCP 伺服器
+mavlink_uri:=tcpout:mavlink.server.com:5760  # 連線到網域名稱
+```
+
+#### 4. 檔案重播 (Log Playback)
+```bash
+# 從 MAVLink 日誌檔案重播
+mavlink_uri:=file:/path/to/logfile.tlog
+mavlink_uri:=file:/home/user/flight_logs/mission_001.tlog
+```
+
+### GCS URI 連線方式 (gcs_uri)
+
+#### 1. UDP 輸出 (UDP Out)
+```bash
+# 單點傳送到 GCS
+gcs_uri:=udpout:192.168.1.100:14550  # 傳送到特定 IP
+gcs_uri:=udpout:10.0.0.50:14550      # 傳送到無線網路 GCS
+gcs_uri:=udpout:127.0.0.1:14550      # 傳送到本機 GCS
+```
+
+#### 2. UDP 廣播 (UDP Broadcast)
+```bash
+# 區域網路廣播
+gcs_uri:=udpbroadcast:192.168.1.255:14550  # 特定子網路廣播
+gcs_uri:=udpbroadcast:255.255.255.255:14550 # 全域廣播
+gcs_uri:=udpbroadcast:10.0.0.255:14550     # 無線網路廣播
+```
+
+#### 3. TCP 輸出 (TCP Out)
+```bash
+# TCP 客戶端連線到 GCS
+gcs_uri:=tcpout:192.168.1.100:5760   # 連線到 TCP GCS
+gcs_uri:=tcpout:gcs.example.com:5760 # 連線到遠端 GCS 伺服器
+```
+
+#### 4. TCP 伺服器 (TCP Server)
+```bash
+# TCP 伺服器等待 GCS 連線
+gcs_uri:=tcp:0.0.0.0:5760           # 監聽所有介面
+gcs_uri:=tcp:192.168.1.100:5760     # 監聽特定介面
+```
+
+#### 5. 多重 GCS 連線
+```bash
+# 同時支援多個 GCS (在程式中可設定多個 gcs_uri)
+# 範例：同時廣播和點對點傳送
+gcs_uri:=udpbroadcast:192.168.1.255:14550,udpout:10.0.0.100:14550
+```
+
+### 常用連線組合範例
+
+#### 範例 1：SITL 模擬器連線
+```bash
+ros2 launch drone_control drone_control.launch.py \
+    mavlink_uri:=udp:0.0.0.0:14550 \
+    gcs_uri:=udpout:127.0.0.1:14551
+```
+
+#### 範例 2：實體無人機 USB 連線
+```bash
+ros2 launch drone_control drone_control.launch.py \
+    mavlink_uri:=/dev/ttyACM0:115200 \
+    gcs_uri:=udpbroadcast:192.168.1.255:14550
+```
+
+#### 範例 3：Wi-Fi 遙測連線
+```bash
+ros2 launch drone_control drone_control.launch.py \
+    mavlink_uri:=udp:0.0.0.0:14550 \
+    gcs_uri:=udpbroadcast:192.168.1.255:14550
+```
+
+#### 範例 4：多載具網路連線
+```bash
+# 載具 1
+ros2 launch drone_control drone_control.launch.py \
+    vehicle_name:=drone1 \
+    mavlink_uri:=udp:0.0.0.0:14550 \
+    gcs_uri:=udpout:192.168.1.100:14550
+
+# 載具 2  
+ros2 launch drone_control drone_control.launch.py \
+    vehicle_name:=drone2 \
+    mavlink_uri:=udp:0.0.0.0:14551 \
+    gcs_uri:=udpout:192.168.1.100:14550
+```
+
+### 連線注意事項
+
+1. **埠號衝突**：確保不同載具使用不同的埠號
+2. **防火牆設定**：開放相對應的埠號
+3. **網路延遲**：Wi-Fi 連線可能有較高延遲
+4. **頻寬限制**：多載具時注意網路頻寬
+5. **MAVLink 版本**：確保版本相容性 (MAVLink 1.0/2.0)
+
+### 連線狀態檢查
 
 ```bash
-# 檢查套件編譯狀態
-colcon list --packages-up-to drone_control
+# 檢查 MAVLink 連線狀態
+ros2 topic echo /{vehicle_type}/swarm{swarm_id}/{vehicle_name}/status
 
-# 重新編譯特定套件
-colcon build --packages-select drone_interfaces --cmake-clean-cache
-colcon build --packages-select drone_control --cmake-clean-cache
+# 檢查網路連線
+ping 192.168.1.100
 
-# 檢查節點狀態
-ros2 node list
+# 檢查埠號占用
+netstat -tulpn | grep 14550
 
-# 檢查主題
-ros2 topic list
-
-# 監控載具狀態
-ros2 topic echo /{vehicle_type}_swarm_1/{vehicle_type}/swarm1/gcs/sub
-
-# 檢查節點日誌
-ros2 launch drone_control drone_control.launch.py --ros-args --log-level DEBUG
-
-# 檢查訊息類型定義
-ros2 interface show drone_interfaces/msg/Drone
-ros2 interface show drone_interfaces/msg/Mission
+# 檢查串口設備
+ls -la /dev/tty*
 ```
-
-## 開發
-
-### 專案結構
-```
-AESIL_mavros/
-├── drone_control/                  # MAVLink 橋接器套件
-│   ├── drone_control/
-│   │   ├── __init__.py
-│   │   └── mavlink_bridge.py      # 主要橋接器程式
-│   ├── launch/
-│   │   └── drone_control.launch.py # 啟動檔案
-│   ├── package.xml                # 套件描述
-│   ├── setup.py                   # Python 套件設定
-│   └── README.md                  # 說明文件
-└── drone_interfaces/               # 自定義 ROS 2 訊息套件
-    ├── msg/
-    │   ├── Drone.msg              # 無人載具狀態訊息
-    │   └── Mission.msg            # 任務指令訊息
-    ├── CMakeLists.txt
-    └── package.xml
-```
-
-### 貢獻指南
-1. Fork 此專案
-2. 建立功能分支 (`git checkout -b feature/新功能`)
-3. 提交變更 (`git commit -am '新增某功能'`)
-4. 推送到分支 (`git push origin feature/新功能`)
-5. 建立 Pull Request
-
-## 授權
-
-MIT License
-
-## 作者
-
-**CY** - AESIL 團隊
-
-## 更新日誌
-
-### v1.0.0 (2025-08-11)
-- 初始版本發布
-- 支援基本 MAVLink 橋接功能
-- 多載具、多集群支援
-- GCS 轉發功能
-- Twist 速度控制
 

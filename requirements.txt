@@ -1,0 +1,5 @@
+# AESIL MAVROS 專案依賴套件
+# MAVLink communication library for Python
+pymavlink>=2.4.37
+pyserial>=3.5
+

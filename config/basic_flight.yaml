@@ -1,0 +1,15 @@
+# 基本飛行配置範例
+# 只啟用基本的飛行控制 topics，適用於簡單的飛行任務
+
+# 基本 topics (最小配置)
+enable_status_pub: true
+enable_mission_sub: true
+enable_velocity_sub: true
+
+# 關閉額外 topics (節省資源)
+enable_gps_pub: false
+enable_attitude_pub: false
+enable_battery_pub: false
+enable_obstacle_pub: false
+enable_waypoint_sub: false
+enable_emergency_sub: false

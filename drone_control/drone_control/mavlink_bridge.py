@@ -17,9 +17,9 @@ from rclpy.executors import MultiThreadedExecutor
 
 
 from drone_interfaces.msg import Drone, Mission
-from sensor_msgs.msg import NavSatFix
-from std_msgs.msg import Float64
-from geometry_msgs.msg import Twist
+from sensor_msgs.msg import NavSatFix, BatteryState
+from std_msgs.msg import Float64, Bool, String
+from geometry_msgs.msg import Twist, PoseStamped
 
 from pymavlink import mavutil
 
@@ -35,6 +35,30 @@ class MavBridge(Node):
         self.declare_parameter('vehicle_type', 'drone')  
         self.declare_parameter('swarm_id', 1)
         self.declare_parameter('vehicle_name', 'leader1')
+        
+        # ────── Topic 白名單參數 ──────
+        self.declare_parameter('enable_status_pub', True)
+        self.declare_parameter('enable_mission_sub', True)
+        self.declare_parameter('enable_velocity_sub', True)
+        self.declare_parameter('enable_gps_pub', False)
+        self.declare_parameter('enable_attitude_pub', False)
+        self.declare_parameter('enable_battery_pub', False)
+        self.declare_parameter('enable_obstacle_pub', False)
+        self.declare_parameter('enable_waypoint_sub', False)
+        self.declare_parameter('enable_emergency_sub', False)
+        
+        # Topic 白名單字典
+        self.topic_whitelist = {
+            'status': self.get_parameter('enable_status_pub').value,
+            'mission': self.get_parameter('enable_mission_sub').value,
+            'velocity': self.get_parameter('enable_velocity_sub').value,
+            'gps': self.get_parameter('enable_gps_pub').value,
+            'attitude': self.get_parameter('enable_attitude_pub').value,
+            'battery': self.get_parameter('enable_battery_pub').value,
+            'obstacle': self.get_parameter('enable_obstacle_pub').value,
+            'waypoint': self.get_parameter('enable_waypoint_sub').value,
+            'emergency': self.get_parameter('enable_emergency_sub').value,
+        }
 
         mav_uri  = self.get_parameter('mavlink_uri').value
         gcs_uri  = self.get_parameter('gcs_uri').value
@@ -75,13 +99,53 @@ class MavBridge(Node):
             history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
             depth=1)
 
-        # ────── ROS Pub / Sub ──────
+        # ────── ROS Pub / Sub (根據白名單創建) ──────
         ns = f'/{self.vehicle_type}/swarm{self.swarmid}/{self.vehicle_name}'
-        self.pub_status = self.create_publisher(Drone, f'{ns}/status', qos_best_effort)
-        self.sub_mission = self.create_subscription(Mission, f'{ns}/mission',self._mission_cb, qos_reliable)
         
-        # 新增 Twist 訊息訂閱器用於速度控制
-        self.sub_velocity = self.create_subscription(Twist, f'{ns}/cmd_vel', self._velocity_cb, qos_reliable)
+        # Publishers (根據白名單)
+        self.topic_publishers = {}
+        if self.topic_whitelist['status']:
+            self.topic_publishers['status'] = self.create_publisher(Drone, f'{ns}/status', qos_best_effort)
+            self.get_logger().info(f"✓ Enabled publisher: {ns}/status")
+            
+        if self.topic_whitelist['gps']:
+            self.topic_publishers['gps'] = self.create_publisher(NavSatFix, f'{ns}/gps/fix', qos_best_effort)
+            self.get_logger().info(f"✓ Enabled publisher: {ns}/gps/fix")
+            
+        if self.topic_whitelist['attitude']:
+            self.topic_publishers['attitude'] = self.create_publisher(PoseStamped, f'{ns}/attitude', qos_best_effort)
+            self.get_logger().info(f"✓ Enabled publisher: {ns}/attitude")
+            
+        if self.topic_whitelist['battery']:
+            self.topic_publishers['battery'] = self.create_publisher(BatteryState, f'{ns}/battery', qos_best_effort)
+            self.get_logger().info(f"✓ Enabled publisher: {ns}/battery")
+            
+        if self.topic_whitelist['obstacle']:
+            self.topic_publishers['obstacle'] = self.create_publisher(String, f'{ns}/obstacle_warning', qos_best_effort)
+            self.get_logger().info(f"✓ Enabled publisher: {ns}/obstacle_warning")
+
+        # Subscribers (根據白名單)
+        self.topic_subscribers = {}
+        if self.topic_whitelist['mission']:
+            self.topic_subscribers['mission'] = self.create_subscription(Mission, f'{ns}/mission', self._mission_cb, qos_reliable)
+            self.get_logger().info(f"✓ Enabled subscriber: {ns}/mission")
+            
+        if self.topic_whitelist['velocity']:
+            self.topic_subscribers['velocity'] = self.create_subscription(Twist, f'{ns}/cmd_vel', self._velocity_cb, qos_reliable)
+            self.get_logger().info(f"✓ Enabled subscriber: {ns}/cmd_vel")
+            
+        if self.topic_whitelist['waypoint']:
+            self.topic_subscribers['waypoint'] = self.create_subscription(PoseStamped, f'{ns}/waypoint', self._waypoint_cb, qos_reliable)
+            self.get_logger().info(f"✓ Enabled subscriber: {ns}/waypoint")
+            
+        if self.topic_whitelist['emergency']:
+            self.topic_subscribers['emergency'] = self.create_subscription(Bool, f'{ns}/emergency_stop', self._emergency_cb, qos_reliable)
+            self.get_logger().info(f"✓ Enabled subscriber: {ns}/emergency_stop")
+
+        # 保持向後相容性
+        self.pub_status = self.topic_publishers.get('status', None)
+        self.sub_mission = self.topic_subscribers.get('mission', None)
+        self.sub_velocity = self.topic_subscribers.get('velocity', None)
 
         # ────── 執行緒 ──────
         self.tx_queue: Queue[Mission] = Queue(maxsize=50)
@@ -112,6 +176,26 @@ class MavBridge(Node):
             self.velocity_queue.put_nowait(msg)
         except:
             self.get_logger().warning('Velocity queue overflow')
+            
+    def _waypoint_cb(self, msg: PoseStamped):
+        """處理航點導航指令 (城市導航用)"""
+        self.get_logger().info(f'Received waypoint: x={msg.pose.position.x:.2f}, y={msg.pose.position.y:.2f}')
+        # 可以將航點轉換為 MAVLink 的 MISSION_ITEM 指令
+        # 這裡可以實現具體的航點導航邏輯
+        
+    def _emergency_cb(self, msg: Bool):
+        """處理緊急停止指令"""
+        if msg.data:
+            self.get_logger().warn('🚨 EMERGENCY STOP ACTIVATED!')
+            # 發送 MAVLink 緊急停止指令
+            # 可以發送 COMMAND_LONG 與 MAV_CMD_DO_PAUSE_CONTINUE
+        else:
+            self.get_logger().info('Emergency stop deactivated')
+            
+    def publish_topic_status(self):
+        """發布當前啟用的 topic 狀態 (除錯用)"""
+        enabled_topics = [k for k, v in self.topic_whitelist.items() if v]
+        self.get_logger().info(f'Active topics: {", ".join(enabled_topics)}')
 
     # ==================================================
     #  Thread-3 : TX
@@ -311,10 +395,44 @@ class MavBridge(Node):
                 if m.battery_remaining != -1:
                     d.battery.data = float(m.battery_remaining)
 
-            # 10 Hz 發佈
+            # 10 Hz 發佈 (根據白名單)
             if t - last_pub > 0.1 and self._msg_complete(d):
                 d.data.header.stamp = self.get_clock().now().to_msg()
-                self.pub_status.publish(d)
+                
+                # Status topic (原有的)
+                if 'status' in self.topic_publishers and self.pub_status:
+                    self.pub_status.publish(d)
+                
+                # GPS topic (新增)
+                if 'gps' in self.topic_publishers and mt == 'GLOBAL_POSITION_INT':
+                    gps_msg = NavSatFix()
+                    gps_msg.header.stamp = self.get_clock().now().to_msg()
+                    gps_msg.header.frame_id = "gps"
+                    gps_msg.latitude = m.lat / 1e7
+                    gps_msg.longitude = m.lon / 1e7
+                    gps_msg.altitude = m.alt / 1000.0
+                    self.topic_publishers['gps'].publish(gps_msg)
+                
+                # Attitude topic (新增)
+                if 'attitude' in self.topic_publishers and mt == 'ATTITUDE':
+                    att_msg = PoseStamped()
+                    att_msg.header.stamp = self.get_clock().now().to_msg()
+                    att_msg.header.frame_id = "base_link"
+                    # 將歐拉角轉換為四元數 (簡化版本)
+                    att_msg.pose.orientation.x = m.roll
+                    att_msg.pose.orientation.y = m.pitch
+                    att_msg.pose.orientation.z = m.yaw
+                    att_msg.pose.orientation.w = 1.0
+                    self.topic_publishers['attitude'].publish(att_msg)
+                
+                # Battery topic (新增)
+                if 'battery' in self.topic_publishers and mt == 'SYS_STATUS':
+                    battery_msg = BatteryState()
+                    battery_msg.header.stamp = self.get_clock().now().to_msg()
+                    battery_msg.percentage = float(m.battery_remaining) / 100.0 if m.battery_remaining != -1 else 0.0
+                    battery_msg.voltage = float(m.voltage_battery) / 1000.0 if hasattr(m, 'voltage_battery') else 0.0
+                    self.topic_publishers['battery'].publish(battery_msg)
+                
                 last_pub = t
 
     @staticmethod

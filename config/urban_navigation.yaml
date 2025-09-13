@@ -1,0 +1,15 @@
+# 城市導航配置範例
+# 啟用城市導航相關的 topics
+
+# 基本 topics (通常都要開啟)
+enable_status_pub: true
+enable_mission_sub: true
+enable_velocity_sub: true
+
+# 城市導航專用 topics
+enable_gps_pub: true          # GPS 定位 (城市導航必須)
+enable_attitude_pub: true     # 姿態資訊 (導航控制用)
+enable_battery_pub: true      # 電池狀態監控
+enable_obstacle_pub: true     # 障礙物警告 (城市環境重要)
+enable_waypoint_sub: true     # 航點導航 (城市路線規劃)
+enable_emergency_sub: true    # 緊急停止 (安全考量)
